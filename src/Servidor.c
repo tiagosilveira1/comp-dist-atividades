@@ -7,6 +7,7 @@ Aluno: Tiago Silveira Lopes, RA: 10417600
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -16,38 +17,218 @@ Aluno: Tiago Silveira Lopes, RA: 10417600
 #endif
 #include <pthread.h>
 #include "protocolo.h"
-
-#define MAX_CLIENTES 2
-
-typedef struct {
-    int socket;
-    char nome[50];
-    int conectado;
-} Jogador;
+#include "jogo.h"
 
 Jogador jogadores[MAX_CLIENTES];
 
 pthread_mutex_t mutex_jogadores = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_jogadores = PTHREAD_COND_INITIALIZER;
+pthread_cond_t cond_nomes = PTHREAD_COND_INITIALIZER;
 
 
 int jogadores_conectados = 0;
 int servidor_socket = -1;
 int executando = 1;
+int nomes_recebidos = 0;
+
 
 /*
- * Envia uma mensagem completa para um cliente.
+ * Envia todos os bytes da mensagem.
+ *
  */
 int enviar_mensagem(int socket, const char *mensagem)
 {
-    size_t tamanho = strlen(mensagem);
+    int tamanho;
+    int enviados = 0;
+    int resultado;
 
-    if (send(socket, mensagem, tamanho, 0) < 0) {
-        perror("send");
-        return -1;
+    tamanho = strlen(mensagem);
+
+    while (enviados < tamanho) {
+
+        resultado = send(socket,mensagem + enviados,tamanho - enviados,0);
+
+        if (resultado <= 0) {
+            return -1;
+        }
+
+        enviados += resultado;
     }
 
     return 0;
+}
+
+
+/*
+ * Recebe uma mensagem do socket.
+ *
+ */
+int receber_mensagem(int socket, char *mensagem, int tamanho)
+{
+    int posicao = 0;
+    char caractere;
+    int resultado;
+
+    if (tamanho <= 1) {
+        return -1;
+    }
+
+    while (posicao < tamanho - 1) {
+
+        resultado = recv(
+            socket,
+            &caractere,
+            1,
+            0
+        );
+
+        if (resultado == 0) {
+            /*
+             * O outro lado fechou a conexão.
+             */
+            return 0;
+        }
+
+        if (resultado < 0) {
+            return -1;
+        }
+
+        if (caractere == '\n') {
+            break;
+        }
+
+        mensagem[posicao] = caractere;
+        posicao++;
+    }
+
+    mensagem[posicao] = '\0';
+
+    return 1;
+}
+
+/*
+ * Remove '\n' e '\r' do final da string.
+ *
+ * Útil para mensagens recebidas através
+ * do protocolo.
+ */
+void remover_quebra_linha(char *texto)
+{
+    int tamanho;
+
+    if (texto == NULL) {
+        return;
+    }
+
+    tamanho = strlen(texto);
+
+    while (tamanho > 0 &&(texto[tamanho - 1] == '\n' || texto[tamanho - 1] == '\r')) {
+        texto[tamanho - 1] = '\0';
+        tamanho--;
+    }
+}
+
+/*
+ * Envia:
+ *
+ * MSG|texto\n
+ */
+int enviar_msg(int socket, const char *texto)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),MSG "|%s\n",texto);
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * NOME|\n
+ */
+int enviar_solicitacao_nome(int socket)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),NOME "|\n");
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * AGUARDE|texto\n
+ */
+int enviar_aguarde(int socket, const char *texto)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),AGUARDE "|%s\n",texto);
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * RODADA|numero|letra|tempo\n
+ */
+int enviar_rodada(int socket,int numero,char letra,int tempo)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),RODADA "|%d|%c|%d\n",numero,letra,tempo);
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * RESULTADO|texto\n
+ */
+int enviar_resultado(int socket, const char *texto)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),RESULTADO "|%s\n",texto);
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * PLACAR|nome1|pontos1|nome2|pontos2\n
+ */
+int enviar_placar(int socket,const char *nome1,int pontos1,const char *nome2,int pontos2)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),PLACAR "|%s|%d|%s|%d\n",nome1,pontos1,nome2,pontos2);
+
+    return enviar_mensagem(socket, mensagem);
+}
+
+
+/*
+ * Envia:
+ *
+ * FIM|texto\n
+ */
+int enviar_fim(int socket, const char *texto)
+{
+    char mensagem[TAM_MENSAGEM];
+
+    snprintf(mensagem,sizeof(mensagem),FIM "|%s\n",texto);
+
+    return enviar_mensagem(socket, mensagem);
 }
 
 /*
@@ -77,6 +258,7 @@ int criar_servidor(int porta)
     // adequado para o tipo de socket (TCP).
     socket_servidor = socket(AF_INET,SOCK_STREAM,0);
 
+    //Falhou criação
     if (socket_servidor < 0) {
         perror("socket");
         return -1;
@@ -100,7 +282,6 @@ int criar_servidor(int porta)
     struct sockaddr_in endereco;
 
     // Inicializa toda a estrutura com zero.
-    // Isso evita que campos não utilizados contenham lixo de memória.
     memset(&endereco, 0, sizeof(endereco));
 
     // Define que o endereço utiliza IPv4.
@@ -110,7 +291,7 @@ int criar_servidor(int porta)
     endereco.sin_addr.s_addr = INADDR_ANY;
     // Define a porta utilizada pelo servidor.
     // htons() converte o número da porta para o formato
-    // de bytes utilizado pela rede (network byte order).
+    // de bytes utilizado pela rede.
     endereco.sin_port = htons(porta);
 
     // Associa o socket ao endereço e à porta configurados.
@@ -125,7 +306,7 @@ int criar_servidor(int porta)
     // A partir daqui, o servidor fica aguardando conexões
     // de clientes.
     // MAX_CLIENTES define quantas conexões podem ficar
-    // aguardando na fila de conexões.
+    // aguardando na fila de conexões (nesse caso duas).
     if (listen(socket_servidor, MAX_CLIENTES) < 0) {
         perror("listen");
         close(socket_servidor);
@@ -134,6 +315,9 @@ int criar_servidor(int porta)
     return socket_servidor;
 }
 
+/*
+ * Trata signal de interrupção (Ctrl+C).
+ */
 void tratar_interrupcao(int sinal)
 {
     (void)sinal;
@@ -154,16 +338,12 @@ void *atender_jogador(void *arg)
 
     free(arg);
 
-    char buffer[256];
+    char buffer[TAM_MENSAGEM];
 
-    int bytes = recv(
-        jogadores[indice].socket,
-        buffer,
-        sizeof(buffer) - 1,
-        0
-    );
+    int resultado = receber_mensagem(jogadores[indice].socket,buffer,sizeof(buffer));
 
-    if (bytes <= 0) {
+    if (resultado <= 0) {
+
         printf("[-] Jogador desconectou.\n");
 
         close(jogadores[indice].socket);
@@ -178,58 +358,64 @@ void *atender_jogador(void *arg)
         return NULL;
     }
 
-    buffer[bytes] = '\0';
-
     /*
-     * Esperamos:
+     * Formato:
      *
-     * NOME|Alice
+     * NOME|João
      */
-    if (strncmp(buffer, MSG_NOME "|", strlen(MSG_NOME) + 1) == 0) {
+    if (strncmp(buffer,NOME "|",strlen(NOME) + 1) == 0) {
 
-        char *nome = buffer + strlen(MSG_NOME) + 1;
+        char *nome = buffer + strlen(NOME) + 1;
+
+        remover_quebra_linha(nome);
 
         /*
-         * Remove '\n', caso exista.
+         * O acesso a nomes_recebidos precisa
+         * ser protegido pelo mutex.
          */
-        nome[strcspn(nome, "\r\n")] = '\0';
+        pthread_mutex_lock(&mutex_jogadores);
 
         strncpy(jogadores[indice].nome,nome,sizeof(jogadores[indice].nome) - 1);
 
         jogadores[indice].nome[sizeof(jogadores[indice].nome) - 1] = '\0';
 
+
+        nomes_recebidos++;
+
+        /*
+         * Avisa a thread que estiver esperando
+         * que um novo nome foi recebido.
+         */
+        pthread_cond_broadcast(&cond_nomes);
+
+        pthread_mutex_unlock(&mutex_jogadores);
+
         printf("[+] Jogador %d: %s\n",indice + 1,jogadores[indice].nome);
 
-        char resposta[256];
+        enviar_msg(jogadores[indice].socket,"Bem-vindo ao jogo!");
 
-        snprintf(resposta,sizeof(resposta),MSG_BEM_VINDO "|%s\n",jogadores[indice].nome);
+        /*
+         * Se ainda não temos os dois jogadores,
+         * informa que este jogador deve aguardar.
+         */
+        
+         int aguardar = 0;
 
-        enviar_mensagem(jogadores[indice].socket,resposta);
+
+         pthread_mutex_lock(&mutex_jogadores);
+
+         if(jogadores_conectados < MAX_CLIENTES) {
+            aguardar = 1;
+        }
+
+        pthread_mutex_unlock(&mutex_jogadores);
+
+        if (aguardar) {
+            enviar_aguarde(jogadores[indice].socket,"Aguardando outro jogador...");
+        }
     }
 
     return NULL;
-}
-
-/*
- * Inicia a partida.
- *
- * Nesta primeira versão apenas sincronizamos
- * os jogadores. A lógica das cinco rodadas
- * pode ficar em jogo.c.
- */
-void iniciar_partida(void)
-{
-    char mensagem[256];
-
-    pthread_mutex_lock(&mutex_jogadores);
-
-    snprintf(mensagem,sizeof(mensagem),"%s|%s vs %s\n",MSG_RODADA,jogadores[0].nome,jogadores[1].nome);
-
-    pthread_mutex_unlock(&mutex_jogadores);
-
-    printf("[Partida] %s vs %s\n",jogadores[0].nome,jogadores[1].nome);
-
-    enviar_para_jogadores(mensagem);
 }
 
 int main(int argc, char *argv[])
@@ -238,6 +424,7 @@ int main(int argc, char *argv[])
     //Variáveis locais ------------------------------------------------------
     int porta = PORTA; //7070 padrão
     pthread_t thread;
+    srand((unsigned int)time(NULL));
 
     //-----------------------------------------------------------------------
     //Argumentos ------------------------------------------------------------
@@ -278,10 +465,11 @@ int main(int argc, char *argv[])
     //-----------------------------------------------------------------------
     //inicialização estrutura do jogador ------------------------------------
     for (int i = 0; i < MAX_CLIENTES; i++) {
-        jogadores[i].socket = -1;
-        jogadores[i].nome[0] = '\0';
-        jogadores[i].conectado = 0;
-    }
+    jogadores[i].socket = -1;
+    jogadores[i].nome[0] = '\0';
+    jogadores[i].conectado = 0;
+    jogadores[i].pontuacao = 0;
+}
 
     while (executando && jogadores_conectados < MAX_CLIENTES) {
         struct sockaddr_in endereco_cliente;
@@ -290,7 +478,7 @@ int main(int argc, char *argv[])
 #else
         socklen_t tamanho = sizeof(endereco_cliente);
 #endif
-
+        // Aceitar conexões de clientes.
         int socket_cliente = accept(servidor_socket,(struct sockaddr *)&endereco_cliente,&tamanho);
 
         if (socket_cliente < 0) {
@@ -303,8 +491,24 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        // Cria um vetor de caracteres para armazenar o endereço IP 
         char ip[INET_ADDRSTRLEN];
 
+        /*Converte o endereço IP armazenado em endereco_cliente.sin_addr
+         * de formato binário para uma string.
+         *
+         *AF_INET:
+         *Indica IPv4.
+         *
+         *&endereco_cliente.sin_addr:
+         *Endereço IPv4 do cliente.
+         *
+         *ip:
+         *Vetor onde o endereço convertido será armazenado.
+         *
+         *sizeof(ip):
+         *Tamanho máximo disponível no vetor ip.
+         */
         inet_ntop(AF_INET,&endereco_cliente.sin_addr,ip,sizeof(ip));
 
         printf("[+] Jogador conectou: %s:%d\n",ip,ntohs(endereco_cliente.sin_port));
@@ -323,7 +527,7 @@ int main(int argc, char *argv[])
         if (indice == -1) {
             pthread_mutex_unlock(&mutex_jogadores);
 
-            enviar_mensagem(socket_cliente,MSG_SERVIDOR_CHEIO "\n");
+            enviar_mensagem(socket_cliente,SERVIDOR_CHEIO "\n");
 
             close(socket_cliente);
             continue;
@@ -337,9 +541,7 @@ int main(int argc, char *argv[])
         /*
          * Avisa o cliente para enviar o nome.
          */
-        enviar_mensagem(socket_cliente,MSG_NOME "|\n");
-
-        pthread_cond_broadcast(&cond_jogadores);
+        enviar_solicitacao_nome(socket_cliente);
 
         pthread_mutex_unlock(&mutex_jogadores);
 
@@ -386,15 +588,23 @@ int main(int argc, char *argv[])
 
     //-----------------------------------------------------------------------
     //Esperar pelos jogadores -----------------------------------------------
-    if (executando &&jogadores_conectados == MAX_CLIENTES) {
-        /*
-         * Pequena espera para as threads receberem
-         * os nomes dos jogadores.
-         */
-        sleep(1);
-        iniciar_partida();
+    if (executando && jogadores_conectados == MAX_CLIENTES) {
+
+        pthread_mutex_lock(&mutex_jogadores);
+
+        while (nomes_recebidos < MAX_CLIENTES && executando) {
+            pthread_cond_wait(&cond_nomes,&mutex_jogadores);
+        }
+
+        pthread_mutex_unlock(&mutex_jogadores);
+
+        if (executando) {
+            iniciar_partida();
+        }
     }
 
+    //-----------------------------------------------------------------------
+    //Fechar servidor -------------------------------------------------------
     printf("\n[*] Servidor encerrado.\n");
 
     for (int i = 0; i < MAX_CLIENTES; i++) {
@@ -408,7 +618,6 @@ int main(int argc, char *argv[])
     }
 
     pthread_mutex_destroy(&mutex_jogadores);
-    pthread_cond_destroy(&cond_jogadores);
 
     return EXIT_SUCCESS;
 }
