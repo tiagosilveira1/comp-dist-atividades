@@ -1,3 +1,8 @@
+/*
+INTEGRANTES DO GRUPO:
+Aluno: Tiago Silveira Lopes, RA: 10417600
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,13 +11,12 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
+#include <conio.h>
 #else
+#include <unistd.h>
 #include <arpa/inet.h>
-#endif
-#ifndef _WIN32
 #include <sys/select.h>
-#endif
-#ifndef _WIN32
 #include <sys/socket.h>
 #endif
 #ifdef _WIN32
@@ -91,14 +95,26 @@ int receber_mensagem(int socket, char *mensagem, int tamanho)
  */
 int conectar_servidor(const char *ip, int porta)
 {
+    #ifdef _WIN32
+    SOCKET socket_cliente;
+    #else
     int socket_cliente;
+    #endif
 
     socket_cliente = socket(AF_INET,SOCK_STREAM,0);
 
-    if (socket_cliente < 0) {
-        perror("socket");
-        return -1;
-    }
+    #ifdef _WIN32 
+    if (socket_cliente == INVALID_SOCKET) { 
+        fprintf( stderr, "Erro em socket(): %d\n", WSAGetLastError() ); 
+        return -1; 
+    } 
+    #else 
+    if (socket_cliente < 0) 
+    { 
+        perror("socket"); 
+        return -1; 
+    } 
+    #endif
 
     struct sockaddr_in endereco;
 
@@ -116,7 +132,11 @@ int conectar_servidor(const char *ip, int porta)
 
     if (connect(socket_cliente,(struct sockaddr *)&endereco,sizeof(endereco)) < 0) {
 
-        perror("connect");
+        #ifdef _WIN32 
+        fprintf( stderr, "Erro em connect(): %d\n", WSAGetLastError() ); 
+        #else 
+        perror("connect"); 
+        #endif
         FECHAR_SOCKET(socket_cliente);
         return -1;
     }
@@ -133,21 +153,115 @@ int conectar_servidor(const char *ip, int porta)
  *  0  -> tempo esgotado
  * -1  -> erro
  */
-int ler_com_timeout(char *buffer,int tamanho,int segundos)
+int ler_com_timeout(char *buffer, int tamanho, int segundos)
 {
+
+#ifdef _WIN32
+
+    int posicao = 0;
+
+    DWORD inicio;
+    DWORD agora;
+    DWORD tempo_limite;
+
+    inicio = GetTickCount();
+
+    tempo_limite = (DWORD)segundos * 1000;
+
+    while (1) {
+
+        agora = GetTickCount();
+
+        if (agora - inicio >= tempo_limite) {
+
+            buffer[posicao] = '\0';
+
+            return 0;
+        }
+
+        if (_kbhit()) {
+
+            int caractere = _getch();
+
+            /*
+             * ENTER
+             */
+            if (caractere == '\r' || caractere == '\n') {
+
+                buffer[posicao] = '\0';
+
+                printf("\n");
+
+                if (posicao == 0) {
+                    return 0;
+                }
+
+                return 1;
+            }
+
+            /*
+             * BACKSPACE
+             */
+            if (caractere == '\b') {
+
+                if (posicao > 0) {
+
+                    posicao--;
+
+                    printf("\b \b");
+                }
+
+                continue;
+            }
+
+            /*
+             * Caracteres normais.
+             */
+            if (isprint((unsigned char)caractere)) {
+
+                if (posicao < tamanho - 1) {
+
+                    buffer[posicao] = (char)caractere;
+
+                    posicao++;
+
+                    putchar(caractere);
+
+                    fflush(stdout);
+                }
+            }
+        }
+
+        /*
+         * Evita consumir 100% da CPU.
+         */
+        Sleep(10);
+    }
+
+#else
+
     fd_set conjunto;
     struct timeval tempo;
 
     FD_ZERO(&conjunto);
+
     FD_SET(STDIN_FILENO, &conjunto);
 
     tempo.tv_sec = segundos;
     tempo.tv_usec = 0;
 
-    int resultado = select(STDIN_FILENO + 1,&conjunto,NULL,NULL,&tempo);
+    int resultado = select(
+        STDIN_FILENO + 1,
+        &conjunto,
+        NULL,
+        NULL,
+        &tempo
+    );
 
     if (resultado < 0) {
+
         perror("select");
+
         return -1;
     }
 
@@ -162,6 +276,8 @@ int ler_com_timeout(char *buffer,int tamanho,int segundos)
     buffer[strcspn(buffer, "\r\n")] = '\0';
 
     return 1;
+
+#endif
 }
 
 
@@ -321,6 +437,15 @@ void processar_mensagem(int socket,char *mensagem)
 
 int main(int argc, char *argv[])
 {
+
+    #ifdef _WIN32
+    WSADATA dados_winsock;
+
+    if (WSAStartup(MAKEWORD(2, 2), &dados_winsock) != 0) {
+        fprintf(stderr, "Erro ao inicializar Winsock.\n");
+        return EXIT_FAILURE;
+    }
+    #endif
     /*
      * Valores padrão:
      *
@@ -347,13 +472,18 @@ int main(int argc, char *argv[])
 
         if (porta <= 0 || porta > 65535) {
             fprintf(stderr, "Porta inválida.\n");
+            #ifdef _WIN32
+            WSACleanup();
+            #endif
             return EXIT_FAILURE;
         }
     }
 
     else {
         fprintf(stderr,"Uso: %s [IP PORTA]\n",argv[0]);
-
+        #ifdef _WIN32
+        WSACleanup();
+        #endif
         return EXIT_FAILURE;
     }
 
@@ -368,11 +498,22 @@ int main(int argc, char *argv[])
     /*
      * Conecta ao servidor.
      */
+    #ifdef _WIN32
+    SOCKET socket_cliente = conectar_servidor(ip,porta);
+    #else
     int socket_cliente = conectar_servidor(ip,porta);
+    #endif
 
+    #ifdef _WIN32
+    if (socket_cliente == INVALID_SOCKET) {  
+        WSACleanup();
+        return EXIT_FAILURE;
+    }
+    #else
     if (socket_cliente < 0) {
         return EXIT_FAILURE;
     }
+    #endif
 
     printf("Conectado!\n");
 
@@ -414,6 +555,8 @@ int main(int argc, char *argv[])
     FECHAR_SOCKET(socket_cliente);
 
     printf("\nCliente encerrado.\n");
-
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
     return EXIT_SUCCESS;
 }
