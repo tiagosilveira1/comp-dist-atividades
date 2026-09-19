@@ -17,6 +17,11 @@ Aluno: Tiago Silveira Lopes, RA: 10417600
 #endif
 #include <pthread.h>
 #include "protocolo.h"
+#ifdef _WIN32
+#define FECHAR_SOCKET closesocket
+#else
+#define FECHAR_SOCKET close
+#endif
 #include "jogo.h"
 
 Jogador jogadores[MAX_CLIENTES];
@@ -272,11 +277,16 @@ int criar_servidor(int porta)
     // mesmo que ela tenha sido usada recentemente por outro socket.
     // &opcao: endereço do valor da opção (1 = habilitado).
     // sizeof(opcao): tamanho do valor enviado.
+    #ifdef _WIN32
+    if (setsockopt(socket_servidor,SOL_SOCKET,SO_REUSEADDR,(const char *)&opcao,sizeof(opcao)) < 0) {
+    #else
     if (setsockopt(socket_servidor,SOL_SOCKET,SO_REUSEADDR,&opcao,sizeof(opcao)) < 0) {
-        perror("setsockopt");
-        close(socket_servidor);
-        return -1;
-    }
+    #endif
+
+    perror("setsockopt");
+    FECHAR_SOCKET(socket_servidor);
+    return -1;
+}
 
     // Estrutura utilizada para armazenar o endereço do servidor.
     struct sockaddr_in endereco;
@@ -298,7 +308,7 @@ int criar_servidor(int porta)
     // bind() faz o socket "pertencer" àquela porta/endereço.
     if (bind(socket_servidor,(struct sockaddr *)&endereco,sizeof(endereco)) < 0) {
         perror("bind");
-        close(socket_servidor);
+        FECHAR_SOCKET(socket_servidor);
         return -1;
     }
 
@@ -309,7 +319,7 @@ int criar_servidor(int porta)
     // aguardando na fila de conexões (nesse caso duas).
     if (listen(socket_servidor, MAX_CLIENTES) < 0) {
         perror("listen");
-        close(socket_servidor);
+        FECHAR_SOCKET(socket_servidor);
         return -1;
     }
     return socket_servidor;
@@ -325,7 +335,7 @@ void tratar_interrupcao(int sinal)
     executando = 0;
 
     if (servidor_socket != -1) {
-        close(servidor_socket);
+        FECHAR_SOCKET(servidor_socket);
     }
 }
 
@@ -346,7 +356,7 @@ void *atender_jogador(void *arg)
 
         printf("[-] Jogador desconectou.\n");
 
-        close(jogadores[indice].socket);
+        FECHAR_SOCKET(jogadores[indice].socket);
 
         pthread_mutex_lock(&mutex_jogadores);
 
@@ -429,6 +439,15 @@ int main(int argc, char *argv[])
     //-----------------------------------------------------------------------
     //Argumentos ------------------------------------------------------------
 
+    #ifdef _WIN32
+    WSADATA dados_winsock;
+
+    if (WSAStartup(MAKEWORD(2, 2), &dados_winsock) != 0) {
+        fprintf(stderr, "Erro ao inicializar Winsock.\n");
+        return EXIT_FAILURE;
+    }
+    #endif
+
     //Permitir ./servidor <porta>
     if (argc >= 2) {
         porta = atoi(argv[1]);
@@ -442,9 +461,9 @@ int main(int argc, char *argv[])
     //-----------------------------------------------------------------------
     //Sinal de interrupção --------------------------------------------------
     signal(SIGINT, tratar_interrupcao);
-#ifndef _WIN32
+    #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
-#endif
+    #endif
 
     //-----------------------------------------------------------------------
     //Menu ------------------------------------------------------------------
@@ -459,6 +478,9 @@ int main(int argc, char *argv[])
     servidor_socket = criar_servidor(porta);
 
     if (servidor_socket < 0) {
+        #ifdef _WIN32
+        WSACleanup();
+        #endif
         return EXIT_FAILURE;
     }
 
@@ -529,7 +551,7 @@ int main(int argc, char *argv[])
 
             enviar_mensagem(socket_cliente,SERVIDOR_CHEIO "\n");
 
-            close(socket_cliente);
+            FECHAR_SOCKET(socket_cliente);
             continue;
         }
 
@@ -554,7 +576,7 @@ int main(int argc, char *argv[])
         if (arg == NULL) {
             perror("malloc");
 
-            close(socket_cliente);
+            FECHAR_SOCKET(socket_cliente);
 
             pthread_mutex_lock(&mutex_jogadores);
 
@@ -574,7 +596,7 @@ int main(int argc, char *argv[])
 
             perror("pthread_create");
             free(arg);
-            close(socket_cliente);
+            FECHAR_SOCKET(socket_cliente);
             pthread_mutex_lock(&mutex_jogadores);
             jogadores[indice].conectado = 0;
             jogadores_conectados--;
@@ -609,15 +631,19 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < MAX_CLIENTES; i++) {
         if (jogadores[i].socket != -1) {
-            close(jogadores[i].socket);
+            FECHAR_SOCKET(jogadores[i].socket);
         }
     }
 
     if (servidor_socket != -1) {
-        close(servidor_socket);
+        FECHAR_SOCKET(servidor_socket);
     }
 
     pthread_mutex_destroy(&mutex_jogadores);
+
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
 
     return EXIT_SUCCESS;
 }
