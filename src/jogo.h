@@ -1,7 +1,39 @@
+/*
+Funções compartilhadas entre Servidor.c e Jogo.c.
+*/
+
 #ifndef JOGO_H
 #define JOGO_H
 
+#include <pthread.h>
 #include "protocolo.h"
+
+typedef struct {
+    int socket;
+    char nome[TAM_NOME];
+    int conectado;
+    int pontuacao;
+} Jogador;
+
+extern Jogador jogadores[MAX_CLIENTES];
+
+extern pthread_mutex_t mutex_jogadores;
+
+/*
+ * Aguarda as respostas dos dois jogadores
+ * durante o mesmo período de tempo.
+ */
+void receber_respostas_rodada(char *resposta1,int tamanho1,char *resposta2,int tamanho2,int *resultado1,int *resultado2);
+
+/*
+ * Iniciar jogo.
+ */
+void iniciar_partida(void);
+
+/*
+ * Executa rodada do jogo.
+ */
+void executar_rodada(int numero);
 
 /*
  * Envia uma mensagem completa pelo socket.
@@ -12,16 +44,6 @@ int enviar_mensagem(int socket, const char *mensagem);
  * Recebe uma mensagem terminada por '\n'.
  */
 int receber_mensagem(int socket, char *mensagem, int tamanho);
-
-/*
- * Recebe uma mensagem esperando no máximo 'segundos'.
- *
- * Retorna:
- *  1  -> mensagem recebida
- *  0  -> timeout
- * -1  -> erro
- */
-int receber_com_timeout(int socket, char *mensagem, int tamanho, int segundos);
 
 /*
  * Verifica se uma palavra é válida para a rodada.
@@ -92,6 +114,11 @@ int enviar_placar(
     const char *nome2,
     int pontos2
 );
+
+/*
+ * Envia uma mensagem para todos os jogadores conectados.
+ */
+void enviar_para_jogadores(const char *mensagem);
 
 /*
  * Envia o encerramento da partida:
