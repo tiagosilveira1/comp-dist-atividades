@@ -113,19 +113,21 @@ A comunicação entre cliente e servidor utiliza TCP.
 
 As mensagens são transmitidas como strings de texto, utilizando o caractere | como separador entre os campos conforme indicado pelo template da atividade:
 
+**Obs: Considerar '/' como '|'.**
+
 **Servidor --> Cliente**
 
 | **Tipo** | **Formato** | **Descrição** |
 | :----: | :----: | :----: |
-| MSG | MSG|texto | Enviar mensagem qualquer |
-| NOME | NOME| | Solicitar nome |
-| AGUARDE | AGUARDE|texto | Informa que cliente deve aguardar |
-| RODADA | RODADA|num|letra|tempo | Informa início de uma rodada |
-| PALAVRA | PALAVRA| | | Solicitar palavra |
-| RESULTADO | RESULTADO|texto | Informa resultado ao final de uma rodada |
-| PLACAR | PLACAR|nome1|pts1|nome2|pts2 | Informa placar |
-| FIM | FIM|texto | Informa encerramento da partida |
-| FULL | FULL|texto | Informa que o servidor está cheio |
+| MSG | MSG/texto | Enviar mensagem qualquer |
+| NOME | NOME/ | Solicitar nome |
+| AGUARDE | AGUARDE/texto | Informa que cliente deve aguardar |
+| RODADA | RODADA/num|letra|tempo | Informa início de uma rodada |
+| PALAVRA | PALAVRA/ | | Solicitar palavra |
+| RESULTADO | RESULTADO/texto | Informa resultado ao final de uma rodada |
+| PLACAR | PLACAR/nome1/pts1/nome2/pts2 | Informa placar |
+| FIM | FIM/texto | Informa encerramento da partida |
+| FULL | FULL/texto | Informa que o servidor está cheio |
 
 Obs: todas as mensagens Servidor --> Cliente são todas as definições de mensagens do **protocolo.h**, com exceção de TIMEOUT.
 
@@ -133,9 +135,9 @@ Obs: todas as mensagens Servidor --> Cliente são todas as definições de mensa
 
 | **Tipo** | **Formato** | **Descrição** |
 | :----: | :----: | :----: |
-| NOME | NOME|texto | Enviar nome do jogador |
-| PALAVRA | PALAVRA|texto | Enviar palavra para servidor |
-| TIMEOUT | TIMEOUT| | Indica para o cliente que o tempo esgotou |
+| NOME | NOME/texto | Enviar nome do jogador |
+| PALAVRA | PALAVRA/texto | Enviar palavra para servidor |
+| TIMEOUT | TIMEOUT/ | Indica para o cliente que o tempo esgotou |
 
 ## 8. Conceitos
 
