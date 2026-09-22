@@ -98,6 +98,7 @@ Para utilizar outro computador da mesma rede:
 Seguiu conforme README.md dos requisitos do projeto no [github do professor](https://github.com/traue/26.2-comp-dist-06D/tree/main/01_sockets/atividade):
 
 | **Arquivo** | **Responsabilidade** |
+| :----: | :----: |
 | protocolo.h | Define constantes, limites, porta padrão e tipos de mensagens utilizados na comunicação. |
 | jogo.h | Declara as funções relacionadas à lógica do jogo. |
 | jogo.c | Implementa a validação das palavras, comunicação formatada pelo protocolo, controle de tempo e funções auxiliares. |
@@ -106,8 +107,81 @@ Seguiu conforme README.md dos requisitos do projeto no [github do professor](htt
 | Makefile | Automatizador do processo de compilação. |
 | README.md | Documentação do projeto. |
 
+## 7. Protocolo de Comunicação
 
-## x. Tecnologias Utilizadas
+A comunicação entre cliente e servidor utiliza TCP.
+
+As mensagens são transmitidas como strings de texto, utilizando o caractere | como separador entre os campos conforme indicado pelo template da atividade:
+
+**Servidor --> Cliente**
+
+| **Tipo** | **Formato** | **Descrição** |
+| :----: | :----: | :----: |
+| MSG | MSG|texto | Enviar mensagem qualquer |
+| NOME | NOME| | Solicitar nome |
+| AGUARDE | AGUARDE|texto | Informa que cliente deve aguardar |
+| RODADA | RODADA|num|letra|tempo | Informa início de uma rodada |
+| PALAVRA | PALAVRA| | | Solicitar palavra |
+| RESULTADO | RESULTADO|texto | Informa resultado ao final de uma rodada |
+| PLACAR | PLACAR|nome1|pts1|nome2|pts2 | Informa placar |
+| FIM | FIM|texto | Informa encerramento da partida |
+| FULL | FULL|texto | Informa que o servidor está cheio |
+
+Obs: todas as mensagens Servidor --> Cliente são todas as definições de mensagens do **protocolo.h**, com exceção de TIMEOUT.
+
+**Cliente --> Servidor**
+
+| **Tipo** | **Formato** | **Descrição** |
+| :----: | :----: | :----: |
+| NOME | NOME|texto | Enviar nome do jogador |
+| PALAVRA | PALAVRA|texto | Enviar palavra para servidor |
+| TIMEOUT | TIMEOUT| | Indica para o cliente que o tempo esgotou |
+
+## 8. Conceitos
+
+| **Conceito** | **Aplicação no Projeto** |
+| :----: | :----: |
+| Arquitetura cliente-servidor | O servidor centraliza o controle da partida e os clientes representam os jogadores. |
+| Comunicação em rede | Utiliza protocolo TCP |
+| Protocolo de aplicação | O projeto define mensagens próprias em protocolo.h |
+| Concorrência | O servidor utiliza pthreads para atender os clientes. |
+| Sincronização | Os jogadores precisam acompanhar o mesmo estado da rodada. |
+| Timeout | select() é utilizado para limitar o tempo de resposta. |
+| Tolerância a falhas | O projeto verifica erros de comunicação e desconexões. |
+| Modularização | A lógica foi dividida entre arquivos .c e .h. |
+| Validação de dados | As palavras recebidas são verificadas antes da pontuação. |
+
+- Comunicação em rede: função abaixo para criação do servidor em TCP: 
+``
+socket_servidor = socket(AF_INET,SOCK_STREAM,0);
+``
+
+- Concorrência: o trecho da main a seguir é usado para atender jogadores
+
+``
+if (pthread_create(&thread,NULL,atender_jogador,arg) != 0) {
+
+            perror("pthread_create");
+            free(arg);
+            FECHAR_SOCKET(socket_cliente);
+            pthread_mutex_lock(&mutex_jogadores);
+            jogadores[indice].conectado = 0;
+            jogadores_conectados--;
+            pthread_mutex_unlock(&mutex_jogadores);
+
+            continue;
+        }
+``
+
+- Timeout: a função ler_com_timeout() dentro de cliente.c utilizada select() e outras funções no caso do Windows para detecção de inputs: kbhit(), _getch(), isprint(), putchar() e fflush(stdout).
+- Tolerância a falhas: Utilização diversa no código, fechando o socket de jogadores que saíram, atualizando a estrutura Jogador implementada e valores de retorno recv() que indicam desconexão do cliente.
+
+## 9. Funções
+
+## 10. Exemplo de execução (print)
+
+
+## 11. Tecnologias Utilizadas
 Linguagem: C
 Comunicação: Sockets TCP
 Concorrência: POSIX Threads (pthread)
