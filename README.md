@@ -161,6 +161,7 @@ socket_servidor = socket(AF_INET,SOCK_STREAM,0);
 - Concorrência: o trecho da main a seguir é usado para atender jogadores
 
 ``
+
 if (pthread_create(&thread,NULL,atender_jogador,arg) != 0) {
 
             perror("pthread_create");
@@ -173,12 +174,191 @@ if (pthread_create(&thread,NULL,atender_jogador,arg) != 0) {
 
             continue;
         }
+        
 ``
 
 - Timeout: a função ler_com_timeout() dentro de cliente.c utilizada select() e outras funções no caso do Windows para detecção de inputs: kbhit(), _getch(), isprint(), putchar() e fflush(stdout).
 - Tolerância a falhas: Utilização diversa no código, fechando o socket de jogadores que saíram, atualizando a estrutura Jogador implementada e valores de retorno recv() que indicam desconexão do cliente.
 
-## 9. Funções
+## 9. Funções e fluxo de execução de cada arquivo C
+
+- **Servidor.c**:
+
+
+```text
+Inicia servidor
+     |
+     ↓
+Cria socket TCP
+     |
+     ↓
+Configura porta/IP
+     |
+     ↓
+bind() + listen()
+     |
+     ↓
+Espera jogadores
+     |
+     ↓
+accept() → jogador 1
+accept() → jogador 2
+     |
+     ↓
+Cria uma thread para cada jogador
+     |
+     ↓
+Cada thread recebe o nome
+     |
+     ↓
+Espera os 2 nomes
+     |
+     ↓
+Inicia a partida
+     |
+     ↓
+Executa as rodadas
+     |
+     ↓
+Envia resultados e placar
+     |
+     ↓
+Finaliza conexões
+```
+
+Funções utilizadas em **Servidor.c**:
+
+| **Função** | **Objetivo** |
+| :----: | :----: |
+| enviar_mensagem() | Enviar uma mensagem completa pelo socket TCP |
+| receber_mensagem() | Receber uma mensagem do cliente até encontrar \n |
+| enviar_para_jogadores() | Enviar uma mensagem para os dois jogadores |
+| enviar_nome() | Pedir ao cliente que informe seu nome |
+| enviar_aguarde() | Informar ao jogador que ele deve aguardar |
+| enviar_rodada() | Enviar a letra e informações da rodada |
+| enviar_resultado() | Enviar o resultado da rodada |
+| enviar_placar() | Enviar o placar atual |
+| enviar_fim() | Informar o encerramento da partida |
+| atender_jogador() | Thread responsável por atender individualmente um jogador |
+| criar_servidor() | Criar e configurar o socket TCP do servidor |
+| tratar_interrupcao() | Tratar encerramento do servidor, como Ctrl+C |
+| main() | Controlar todo o ciclo de execução do servidor |
+
+- **Cliente.c**:
+
+ ```text
+     |
+     ↓
+Inicia cliente
+     |
+     ↓
+Inicializa Winsock (Windows)
+     |
+     ↓
+Lê IP e porta
+     |
+     ↓
+Cria socket TCP
+     |
+     ↓
+connect()
+     |
+     ↓
+Conectado ao servidor
+     |
+     ↓
+Espera mensagens
+     |
+     ↓
+processar_mensagem()
+     |
+     ├── MSG       → mostra mensagem
+     |
+     ├── NOME      → pede nome
+     |
+     ├── AGUARDE   → espera
+     |
+     ├── RODADA    → pede palavra
+     |
+     ├── RESULTADO → mostra resultado
+     |
+     ├── PLACAR    → mostra placar
+     |
+     └── FIM       → encerra
+     |
+     ↓
+Fecha socket
+     |
+     ↓
+Encerra cliente
+```
+
+Funções utilizadas em **Cliente.c**:
+
+| **Função** | **Objetivo** |
+| :----: | :----: |
+| enviar_mensagem() | Enviar uma mensagem completa para o servidor |
+| receber_mensagem() | Receber uma mensagem completa do servidor |
+| conectar_servidor() | Criar o socket e conectar o cliente ao servidor |
+| ler_com_timeout() | Ler a palavra do jogador respeitando o limite de tempo |
+| processar_mensagem() | Interpretar as mensagens recebidas e tomar as ações correspondentes |
+| main() | Controla todo o funcionamento do cliente |
+
+- **Jogo.c**:
+
+```text
+jogo.c
+   │
+   ↓
+iniciar_partida()
+   │
+   ├──────────────────────┐
+   ↓                      ↓
+executar_rodada()     executa 5 vezes
+   │
+   ↓
+gerar_letra()
+   │
+   ↓
+envia letra aos jogadores
+   │
+   ↓
+receber_respostas_rodada()
+   │
+   ├───────────────┐
+   ↓               ↓
+jogador 1       jogador 2
+   │               │
+   └───────┬───────┘
+           ↓
+    validar_palavra()
+           │
+           ↓
+    compara palavras iguais
+           │
+           ↓
+    atualiza pontuação
+           │
+           ↓
+    envia resultado
+           │
+           ↓
+      envia placar
+           │
+           ↓
+    próxima rodada
+```    
+
+Funções utilizadas em **Jogo.c**:
+
+| **Função** | **Objetivo** |
+| :----: | :----: |
+| receber_respostas_rodada() | Receber as respostas dos dois jogadores dentro do tempo |
+| strings_iguais_ignore_case() | Comparar duas palavras |
+| iniciar_partida() | Iniciar a partida, executar todas as rodadas e informar o vencedor |
+| executar_rodada() | Controlar uma rodada completa |
+| validar_palavra() | Verificar se uma palavra atende às regras |
+| gerar_letra() | Sortear a letra da rodada |
 
 ## 10. Exemplo de execução (print)
 
