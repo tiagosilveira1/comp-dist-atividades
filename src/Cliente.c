@@ -8,6 +8,7 @@ Aluno: Tiago Silveira Lopes, RA: 10417600
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <signal.h>
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -54,6 +55,9 @@ int enviar_mensagem(int socket, const char *mensagem)
     return 0;
 }
 
+/*
+ * Recebe uma mensagem do servidor
+ */
 int receber_mensagem(int socket, char *mensagem, int tamanho)
 {
     int posicao = 0;
@@ -288,6 +292,7 @@ void processar_mensagem(int socket,char *mensagem)
 {
     /*
      * MSG|texto
+     * O servidor envia mensagem.
      */
     if (strncmp(mensagem, MSG "|", strlen(MSG) + 1) == 0) {
 
@@ -318,7 +323,7 @@ void processar_mensagem(int socket,char *mensagem)
 
         snprintf(resposta,sizeof(resposta),NOME "|%s\n",nome);
 
-        enviar_mensagem(socket, resposta);
+        enviar_mensagem(socket, resposta); // enviar para o servidor: NOME | <nome>\n
     }
 
     /*
@@ -361,7 +366,7 @@ void processar_mensagem(int socket,char *mensagem)
 
             snprintf(resposta,sizeof(resposta),PALAVRA "|%s\n",palavra);
 
-            enviar_mensagem(socket,resposta);
+            enviar_mensagem(socket,resposta); // enviar para o servidor: PALAVRA | <palavra>\n
 
             printf("Enviado: \"%s\"\n",palavra);
         }
@@ -369,7 +374,7 @@ void processar_mensagem(int socket,char *mensagem)
 
             printf("\nTempo esgotado!\n");
 
-            enviar_mensagem(socket,TIMEOUT "|\n");
+            enviar_mensagem(socket,TIMEOUT "|\n"); // enviar para o servidor: TIMEOUT |\n
         }
         else {
             printf("\nErro ao ler palavra.\n");
@@ -437,6 +442,13 @@ void processar_mensagem(int socket,char *mensagem)
 
 int main(int argc, char *argv[])
 {
+    //-----------------------------------------------------------------------
+    //Signal ----------------------------------------------------------------
+    #ifndef _WIN32
+    /*Tratar sinais
+     */
+    signal(SIGPIPE, SIG_IGN);
+    #endif
 
     #ifdef _WIN32
     WSADATA dados_winsock;
@@ -446,6 +458,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
     #endif
+
+    //-----------------------------------------------------------------------
+    //Valores de entrada e padrão -------------------------------------------
     /*
      * Valores padrão:
      *
@@ -488,6 +503,8 @@ int main(int argc, char *argv[])
     }
 
 
+    //-----------------------------------------------------------------------
+    //Menu Inicial ----------------------------------------------------------
     printf("========================================\n");
     printf("       BATALHA DE PALAVRAS - CLIENTE\n");
     printf("========================================\n");
@@ -495,6 +512,8 @@ int main(int argc, char *argv[])
     printf("Conectando a %s:%d...\n",ip,porta);
 
 
+    //-----------------------------------------------------------------------
+    //Conexão ao servidor ---------------------------------------------------
     /*
      * Conecta ao servidor.
      */
@@ -518,9 +537,9 @@ int main(int argc, char *argv[])
     printf("Conectado!\n");
 
 
+    //-----------------------------------------------------------------------
+    //Loop Principal --------------------------------------------------------
     /*
-     * Loop principal:
-     *
      * fica esperando mensagens do servidor.
      */
     while (1) {
@@ -551,7 +570,8 @@ int main(int argc, char *argv[])
         if (strncmp(mensagem,FIM "|",strlen(FIM) + 1) == 0) {break;}
     }
 
-
+    //-----------------------------------------------------------------------
+    //Finalizar cliente -----------------------------------------------------
     FECHAR_SOCKET(socket_cliente);
 
     printf("\nCliente encerrado.\n");
