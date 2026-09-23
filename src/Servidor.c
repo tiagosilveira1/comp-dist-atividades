@@ -352,6 +352,7 @@ void *atender_jogador(void *arg)
 
     int resultado = receber_mensagem(jogadores[indice].socket,buffer,sizeof(buffer));
 
+    // Desconexão ou erro de comunicação
     if (resultado <= 0) {
 
         printf("[-] Jogador desconectou.\n");
@@ -466,7 +467,7 @@ int main(int argc, char *argv[])
     #endif
 
     //-----------------------------------------------------------------------
-    //Menu ------------------------------------------------------------------
+    //Menu inicial-----------------------------------------------------------
     printf("========================================\n");
     printf("     BATALHA DE PALAVRAS - SERVIDOR\n");
     printf("========================================\n");
@@ -495,11 +496,11 @@ int main(int argc, char *argv[])
 
     while (executando && jogadores_conectados < MAX_CLIENTES) {
         struct sockaddr_in endereco_cliente;
-#ifdef _WIN32
+        #ifdef _WIN32
         int tamanho = sizeof(endereco_cliente);
-#else
+        #else
         socklen_t tamanho = sizeof(endereco_cliente);
-#endif
+        #endif
         // Aceitar conexões de clientes.
         int socket_cliente = accept(servidor_socket,(struct sockaddr *)&endereco_cliente,&tamanho);
 
@@ -568,7 +569,7 @@ int main(int argc, char *argv[])
         pthread_mutex_unlock(&mutex_jogadores);
 
         /*
-         * Cria uma thread para esse cliente.
+         * Cria uma thread para atender esse cliente.
          */
 
         int *arg = malloc(sizeof(int));
@@ -609,7 +610,7 @@ int main(int argc, char *argv[])
     }
 
     //-----------------------------------------------------------------------
-    //Esperar pelos jogadores -----------------------------------------------
+    //Esperar pelos jogadores e começar partida -----------------------------
     if (executando && jogadores_conectados == MAX_CLIENTES) {
 
         pthread_mutex_lock(&mutex_jogadores);
