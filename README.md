@@ -367,10 +367,17 @@ Funções utilizadas em **Jogo.c**:
 ![Imagem 3](assets/imagem_execução3.png)
 
 ## 11. Tecnologias Utilizadas
+
 Linguagem: C
+
 Comunicação: Sockets TCP
+
 Concorrência: POSIX Threads (pthread)
+
 Controle de tempo: select()
+
 Sistema operacional: Windows 10
+
 Compilação: GCC
+
 Automação: Makefile
