@@ -1,3 +1,8 @@
+/*
+INTEGRANTES DO GRUPO:
+Aluno: Tiago Silveira Lopes, RA: 10417600
+*/
+
 #ifndef PROTOCOLO_H
 #define PROTOCOLO_H
 
@@ -35,6 +40,5 @@
 #define PLACAR "PLACAR"
 #define FIM "FIM"
 #define SERVIDOR_CHEIO "FULL"
-#define SEPARADOR "|"
 
 #endif
