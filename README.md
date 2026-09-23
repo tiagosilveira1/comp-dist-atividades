@@ -362,6 +362,9 @@ Funções utilizadas em **Jogo.c**:
 
 ## 10. Exemplo de execução (print)
 
+![Imagem 1](assets/imagem_execução1.png)
+![Imagem 2](assets/imagem_execução2.png)
+![Imagem 3](assets/imagem_execução3.png)
 
 ## 11. Tecnologias Utilizadas
 Linguagem: C
